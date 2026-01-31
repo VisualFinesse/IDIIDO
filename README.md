@@ -19,7 +19,6 @@ Works with `claude code` subscription or `codex` subscription
 - Executes tasks from `TODO.md` files with AI agents
 - Automatic model switching when token limits are reached
 - Definition-of-Done (DoD) validation with tests and checks
-- Supports both interactive and CI pipeline modes
 
 ## Installation
 
@@ -29,13 +28,16 @@ cd idoiido
 pip install -r .claude/requirements.txt
 ```
 
+Copy & replace your .claude file with the project contents.
+
 1. Generate project codemap:
 
 ```bash
 python .claude/scripts/codemap.py
 ```
 
-1. Create your `TODO.md` file with your list of demands.
+Create or add your `TODO.md` file with your list of demands. Should be ok anywhere in your project. But if not, jsut use the flag below.
+
 
 ## // Just Run it //
 
