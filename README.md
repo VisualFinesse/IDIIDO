@@ -19,7 +19,6 @@ Works with `claude code` subscription or `codex` subscription
 - Executes tasks from `TODO.md` files with AI agents
 - Automatic model switching when token limits are reached
 - Definition-of-Done (DoD) validation with tests and checks
-- Supports both interactive and CI pipeline modes
 
 ## Installation
 
