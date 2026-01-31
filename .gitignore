@@ -1,0 +1,71 @@
+# Byte-compiled / cache
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+.python-version
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+secrets/
+*.key
+*.pem
+*.crt
+*.pfx
+
+# Packaging / build
+build/
+dist/
+*.egg-info/
+.eggs/
+pip-wheel-metadata/
+wheels/
+
+# Test / coverage
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+reports/
+
+# Logs
+*.log
+logs/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Type checkers
+.mypy_cache/
+.pyre/
+.pytype/
+
+# Linters / formatters
+.ruff_cache/
+
+# Temporary / editor files
+*.swp
+*.swo
+*.bak
+*.tmp
+.cache/
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# IDEs
+.vscode/
+.idea/
+
+# Local overrides
+*.local

@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(python:*)",
+      "Bash(pytest:*)",
+      "Bash(ls:*)",
+      "Bash(claude --print)",
+      "Bash(claude -p --dangerously-skip-permissions \"Say hello and nothing else\")",
+      "Bash(claude --print:*)",
+      "Bash(powershell -ExecutionPolicy Bypass -File:*)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python .claude/hooks/pre-prompt.py"
+          }
+        ]
+      }
+    ]
+  }
+}

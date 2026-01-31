@@ -1,0 +1,15 @@
+{
+  "models": [
+    "mistralai/devstral-2512",
+    "deepseek/deepseek-r1-0528",
+    "nousresearch/hermes-3-llama-3.1-405b",
+    "tngtech/deepseek-r1t2-chimera",
+    "nvidia/nemotron-3-nano-30b-a3b",
+    "qwen/qwen3-next-80b-a3b-instruct"
+  ],
+  "caps": {
+    "per_attempt_timeout_s": 90,
+    "max_attempts": 7,
+    "total_timeout_s": 300
+  }
+}
