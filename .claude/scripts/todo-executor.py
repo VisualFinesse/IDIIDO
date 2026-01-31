@@ -254,15 +254,24 @@ def _emit_claude_stream_json_lines(proc: subprocess.Popen) -> None:
         out.write(s)
         out.flush()
 
+    saw_delta = False
+
     def handle_obj(obj: dict) -> None:
+        nonlocal saw_delta
         ev = obj.get("event") if isinstance(obj, dict) else None
         if isinstance(ev, dict):
             delta = ev.get("delta")
             if isinstance(delta, dict):
                 txt = delta.get("text")
                 if isinstance(txt, str) and txt:
+                    saw_delta = True
                     write_text(txt)
                     return
+
+        # Skip message/result objects if we already streamed via deltas,
+        # to avoid re-emitting accumulated text a second time.
+        if saw_delta:
+            return
 
         msg = obj.get("message")
         if isinstance(msg, dict):
@@ -304,7 +313,6 @@ def _claude_headless_args() -> list[str]:
         "-p",
         "--output-format",
         "stream-json",
-        "--include-partial-messages",
         "--verbose",
         "--allowedTools",
         "Read,Edit,Write,Replace,Glob,Grep,LS,Bash",
@@ -364,10 +372,16 @@ class ExecutorPaths:
                 alt2 = project_root / "definition-of-done.md"
                 if alt2.exists():
                     dod_path = alt2
+        # Check both .claude/CODEMAP.md and project root CODEMAP.md
+        codemap_path = claude_dir / "CODEMAP.md"
+        if not codemap_path.exists():
+            alt_codemap = project_root / "CODEMAP.md"
+            if alt_codemap.exists():
+                codemap_path = alt_codemap
         return ExecutorPaths(
             project_root=project_root,
             claude_dir=claude_dir,
-            codemap_path=claude_dir / "CODEMAP.md",
+            codemap_path=codemap_path,
             models_config_path=claude_dir / "config" / "models.json",
             telemetry_path=claude_dir / "logs" / "llm_attempts.jsonl",
             pre_prompt_hook_path=claude_dir / "hooks" / "pre-prompt.py",
@@ -485,11 +499,12 @@ class AgentRunner:
 
 ## INSTRUCTIONS
 
-1. Read the relevant source files to understand the current implementation.
-2. Implement ONLY what the task describes.
-3. Keep changes minimal and aligned with existing patterns.
-4. Run tests with `pytest` (or the repo's test command).
-5. Do NOT mark TODO items complete; the executor will update TODO.md after validation.
+1. Use the CODEBASE CONTEXT above as your primary reference for project structure, file locations, and existing patterns. Only read specific files when you need implementation details not covered by the codemap.
+2. The codemap already provides the map — go straight to the relevant files.
+3. Implement ONLY what the task describes.
+4. Keep changes minimal and aligned with existing patterns.
+5. Run tests with `pytest` (or the repo's test command).
+6. Do NOT mark TODO items complete; the executor will update TODO.md after validation.
 
 Begin working on the task now.
 """

@@ -22,5 +22,9 @@
         ]
       }
     ]
-  }
+  },
+  "enabledMcpjsonServers": [
+    "sequential-thinking"
+  ],
+  "enableAllProjectMcpServers": true
 }
