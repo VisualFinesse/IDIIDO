@@ -26,7 +26,7 @@ OPTIONS:
 
 ENV:
     AGENT_FALLBACK_ORDER     Pipe/comma/space-separated agent order, e.g. "router | codex | claude"
-                             If unset, defaults to: "router | codex | claude"
+                             default: "router | codex | claude"
     OPENROUTER_API_KEY       Required for agent-select=router
     LLM_STREAM               If "1", stream router output tokens (default: "1")
 """
