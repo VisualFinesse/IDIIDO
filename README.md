@@ -29,13 +29,17 @@ cd idoiido
 pip install -r .claude/requirements.txt
 ```
 
+Copy & replace your .claude file with the project contents.
+
 1. Generate project codemap:
 
 ```bash
 python .claude/scripts/codemap.py
 ```
 
-1. Create your `TODO.md` file with your list of demands.
+1. Create or add your `TODO.md` file with your list of demands. Should be ok anywhere in your project. But if not, jsut use the flag below.
+
+2. Move the `.mcp.json example` to the root and rename to just `.mcp.json`
 
 ## // Just Run it //
 
