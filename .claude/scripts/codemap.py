@@ -1985,7 +1985,19 @@ Examples:
 def main(argv: Optional[Sequence[str]] = None) -> int:
     """Main entry point."""
     args = parse_args(argv)
-    root = Path(args.root).resolve()
+    if args.root != ".":
+        root = Path(args.root).resolve()
+    else:
+        # Default to git repository root
+        try:
+            import subprocess
+            git_root = subprocess.run(
+                ["git", "rev-parse", "--show-toplevel"],
+                capture_output=True, text=True, check=True
+            ).stdout.strip()
+            root = Path(git_root).resolve()
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            root = Path(".").resolve()
 
     if not root.exists() or not root.is_dir():
         print(f"Error: directory not found: {root}", file=sys.stderr)
