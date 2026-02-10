@@ -62,6 +62,30 @@ def resolve_todo_path(
     return (cwd / "TODO.md") if mode == "cwd" else (root / "TODO.md")
 
 
+_FILE_EXTENSIONS = (
+    "py", "md", "sh", "bat", "ps1", "yml", "yaml", "json", "toml",
+    "js", "ts", "jsx", "tsx", "html", "css", "txt", "cfg", "xml",
+    "ini", "env", "sql", "rs", "go", "java", "rb", "php", "m4a",
+)
+
+_FILE_EXT_PATTERN = "|".join(_FILE_EXTENSIONS)
+
+
+def _looks_like_task_description(text: str) -> bool:
+    """Heuristic: return True when *text* looks like a task description
+    (contains file paths or is very long) rather than a short section title."""
+    if "/" in text:
+        return True
+    if re.match(
+        rf"^[\w.\-]+\.(?:{_FILE_EXT_PATTERN})\b",
+        text,
+    ):
+        return True
+    if len(text) > 80:
+        return True
+    return False
+
+
 def _depth_from_indent(indent: str) -> int:
     return len(indent.replace("\t", "  ")) // 2
 
@@ -150,12 +174,14 @@ def parse_todo_file(
         # "1) Title" / "1. Title" / "1 - Title" section headers (not list items)
         section_match = re.match(r"^(?:Section\s+)?(\d+)\s*(?:[)\.]|-)\s*(.*)$", line_stripped, re.IGNORECASE)
         if section_match and not line_stripped.startswith("- [") and not re.match(r"^\s*\d+[\.)]\s+\[", line):
-            section_num = section_match.group(1)
             section_title = section_match.group(2).strip()
-            current_section = f"Section {section_num}: {section_title}" if section_title else f"Section {section_num}"
-            seen_section = True
-            parent_stack = []
-            continue
+            # Skip if the content looks like a task description (file paths, etc.)
+            if not _looks_like_task_description(section_title):
+                section_num = section_match.group(1)
+                current_section = f"Section {section_num}: {section_title}" if section_title else f"Section {section_num}"
+                seen_section = True
+                parent_stack = []
+                continue
 
         # Checkbox tasks: "- [ ] ..." / "- [x] ..."
         checkbox_match = re.match(r"^(\s*)- \[([ xX])\]\s+(.+)$", line)
@@ -223,6 +249,19 @@ def parse_todo_file(
             )
             continue
 
+        # Bare section headers: standalone capitalised text such as
+        # "Important", "Documentation", "Low Priority".
+        if (
+            line_stripped
+            and not line[0].isspace()
+            and len(line_stripped) <= 50
+            and re.match(r"^[A-Z][A-Za-z\s]+$", line_stripped)
+        ):
+            current_section = line_stripped
+            seen_section = True
+            parent_stack = []
+            continue
+
     logger.info(f"Parsed {len(tasks)} tasks from {path}")
     return tasks
 
@@ -276,8 +315,30 @@ def mark_task_complete(
         logger.info(f"Marked checkbox task complete at line {line_number}: {original.strip()}")
         return True
 
-    # If it’s a non-checkbox list item (numbered or bullet), do not mutate format implicitly.
-    logger.warning(f"Line {line_number} is not a pending checkbox task: {original.strip()}")
+    # Numbered list item: "N. Task" or "N) Task" → convert to "- [x] Task"
+    numbered_match = re.match(r"^(\s*)\d+[\.)]\s+(.+)$", original)
+    if numbered_match:
+        indent = numbered_match.group(1)
+        content = numbered_match.group(2)
+        lines[idx] = f"{indent}- [x] {content}\n"
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        logger.info(f"Marked numbered task complete at line {line_number}: {original.strip()}")
+        return True
+
+    # Bullet list item without checkbox: "- Task" → convert to "- [x] Task"
+    # Skip lines that are already checkboxes (completed or pending).
+    bullet_match = re.match(r"^(\s*)-\s+(.+)$", original)
+    if bullet_match and not re.match(r"^(\s*)- \[[xX ]\]\s+", original):
+        indent = bullet_match.group(1)
+        content = bullet_match.group(2)
+        lines[idx] = f"{indent}- [x] {content}\n"
+        with open(path, "w", encoding="utf-8") as f:
+            f.writelines(lines)
+        logger.info(f"Marked bullet task complete at line {line_number}: {original.strip()}")
+        return True
+
+    logger.warning(f"Line {line_number} is not a recognized task format: {original.strip()}")
     return False
 
 
@@ -321,13 +382,27 @@ def _extract_metadata(description: str) -> Dict[str, Any]:
     if phase_refs:
         metadata["phase_references"] = phase_refs
 
-    file_refs = re.findall(r"`([^`]+\.(?:py|md|yml|yaml|json|ps1))`", description)
+    file_refs = re.findall(
+        rf"`([^`]+\.(?:{_FILE_EXT_PATTERN}))`",
+        description,
+    )
     if file_refs:
         metadata["file_references"] = file_refs
 
     task_id_match = re.match(r"^\*\*(\d+\.\d+)[:\s]+", description)
     if task_id_match:
         metadata["task_id"] = task_id_match.group(1)
+
+    # Leading file-path reference:  path/to/file.ext:line - description
+    target_match = re.match(
+        rf"^([\w./\\-]+\.(?:{_FILE_EXT_PATTERN}))"
+        rf"(?::(\d+(?:\s*[-,]\s*\d+)*))?",
+        description,
+    )
+    if target_match:
+        metadata["target_file"] = target_match.group(1)
+        if target_match.group(2):
+            metadata["target_lines"] = target_match.group(2).strip()
 
     return metadata
 
@@ -347,6 +422,12 @@ def get_task_context(task: TodoTask) -> str:
 
     if task.metadata.get("critical"):
         context_lines.append("⚠️  CRITICAL TASK")
+
+    if task.metadata.get("target_file"):
+        target = task.metadata["target_file"]
+        if task.metadata.get("target_lines"):
+            target += f":{task.metadata['target_lines']}"
+        context_lines.append(f"Target: {target}")
 
     if task.metadata.get("file_references"):
         context_lines.append(f"Referenced Files: {', '.join(task.metadata['file_references'])}")

@@ -390,6 +390,186 @@ class TestGetTaskContext(unittest.TestCase):
         self.assertIn("References Sections: 1, 2", context)
 
 
+class TestNumberedFilePathFormat(unittest.TestCase):
+    """Tests for the numbered file-path TODO format.
+
+    Format example:
+        1. backend/bin/start.sh - Description here.
+
+        Important
+
+        5. backend/src/main.py:19 - Another description.
+    """
+
+    SAMPLE_TODO = """\
+ 1. backend/bin/start.sh - Entire startup script is bash-only. Create a start.bat or start.ps1 equivalent.
+2. start.sh (root) - Root startup script uses bash syntax throughout.
+3. backend/src/video_utils.py:271 - OpenCV cascade path concatenation breaks on Windows.
+4. backend/src/video_utils.py:277-278 - OpenCV DNN model path construction uses .replace on a path string.
+
+Important
+
+5. backend/src/main.py:19 - logging.FileHandler uses a hardcoded relative path.
+6. backend/src/config.py:21 - Default temp directory is "temp" (relative).
+7. backend/src/video_utils.py:613, 735 - MoviePy temp_audiofile writes to CWD.
+8. docker-compose.yml:42, 86 - .venv/bin/uvicorn and .venv/bin/arq are Linux paths.
+
+Documentation
+
+9. backend/README.md - Virtual environment activation only shows source command.
+10. backend/README.md - ffmpeg installation mentions brew and apt but not Windows.
+11. CLAUDE.md - Development commands section shows Unix activation only.
+
+Low Priority
+
+12. backend/src/main_refactored.py:30 - Same logging.FileHandler issue as main.py.
+13. General - Verify that yt-dlp and ffmpeg subprocess calls work on Windows (they generally do, but any shell piping or Unix-specific flags should be tested).
+14. General - Confirm MoviePy v2 and MediaPipe work correctly on Windows with Python 3.11+ (known to have occasional build issues on Windows).
+"""
+
+    def _write_and_parse(self, content=None):
+        import tempfile as _tf
+        d = _tf.mkdtemp()
+        p = Path(d) / "test.md"
+        p.write_text(content or self.SAMPLE_TODO, encoding="utf-8")
+        return parse_todo_file(str(p))
+
+    def test_parses_all_14_items(self):
+        tasks = self._write_and_parse()
+        self.assertEqual(len(tasks), 14)
+
+    def test_items_before_first_section_are_general(self):
+        tasks = self._write_and_parse()
+        for t in tasks[:4]:
+            self.assertEqual(t.section, "General")
+
+    def test_bare_section_important(self):
+        tasks = self._write_and_parse()
+        for t in tasks[4:8]:
+            self.assertEqual(t.section, "Important", f"task {t.line_number}: {t.description[:40]}")
+
+    def test_bare_section_documentation(self):
+        tasks = self._write_and_parse()
+        for t in tasks[8:11]:
+            self.assertEqual(t.section, "Documentation", f"task {t.line_number}: {t.description[:40]}")
+
+    def test_bare_section_low_priority(self):
+        tasks = self._write_and_parse()
+        for t in tasks[11:14]:
+            self.assertEqual(t.section, "Low Priority", f"task {t.line_number}: {t.description[:40]}")
+
+    def test_all_items_are_pending(self):
+        tasks = self._write_and_parse()
+        for t in tasks:
+            self.assertEqual(t.status, "pending")
+
+    def test_numbered_items_not_treated_as_sections(self):
+        """Numbered items with file paths must NOT become section headers."""
+        tasks = self._write_and_parse()
+        sections = {t.section for t in tasks}
+        # None of the task descriptions should appear as a section name
+        for t in tasks:
+            self.assertNotIn(t.description, sections)
+
+    def test_target_file_metadata(self):
+        tasks = self._write_and_parse()
+        # Item 1: backend/bin/start.sh
+        self.assertEqual(tasks[0].metadata.get("target_file"), "backend/bin/start.sh")
+        self.assertIsNone(tasks[0].metadata.get("target_lines"))
+        # Item 3: backend/src/video_utils.py:271
+        self.assertEqual(tasks[2].metadata.get("target_file"), "backend/src/video_utils.py")
+        self.assertEqual(tasks[2].metadata.get("target_lines"), "271")
+        # Item 4: backend/src/video_utils.py:277-278
+        self.assertEqual(tasks[3].metadata.get("target_file"), "backend/src/video_utils.py")
+        self.assertEqual(tasks[3].metadata.get("target_lines"), "277-278")
+
+    def test_target_lines_multiple(self):
+        tasks = self._write_and_parse()
+        # Item 7: backend/src/video_utils.py:613, 735
+        self.assertEqual(tasks[6].metadata.get("target_file"), "backend/src/video_utils.py")
+        self.assertEqual(tasks[6].metadata.get("target_lines"), "613, 735")
+        # Item 8: docker-compose.yml:42, 86
+        self.assertEqual(tasks[7].metadata.get("target_file"), "docker-compose.yml")
+        self.assertEqual(tasks[7].metadata.get("target_lines"), "42, 86")
+
+    def test_no_target_file_for_general_items(self):
+        tasks = self._write_and_parse()
+        # Items 13 and 14 start with "General" (not a file)
+        self.assertNotIn("target_file", tasks[12].metadata)
+        self.assertNotIn("target_file", tasks[13].metadata)
+
+    def test_leading_space_on_first_item(self):
+        """First item has a leading space; should still parse correctly."""
+        tasks = self._write_and_parse()
+        self.assertIn("backend/bin/start.sh", tasks[0].description)
+
+
+class TestMarkNumberedTaskComplete(unittest.TestCase):
+    """Tests for marking numbered and bullet list items complete."""
+
+    def test_mark_numbered_item_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "test.md"
+            p.write_text("1. First task\n2. Second task\n3. Third task\n")
+            result = mark_task_complete(str(p), 2)
+            self.assertTrue(result)
+            content = p.read_text()
+            self.assertIn("- [x] Second task", content)
+            self.assertIn("1. First task", content)
+            self.assertIn("3. Third task", content)
+
+    def test_mark_bullet_item_complete(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "test.md"
+            p.write_text("- First task\n- Second task\n")
+            result = mark_task_complete(str(p), 1)
+            self.assertTrue(result)
+            content = p.read_text()
+            self.assertIn("- [x] First task", content)
+
+    def test_marked_numbered_re_parses_as_completed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            p = Path(tmp) / "test.md"
+            p.write_text(
+                "1. backend/src/main.py:19 - Fix logging path\n"
+                "2. backend/src/config.py:21 - Fix temp dir\n"
+            )
+            mark_task_complete(str(p), 1)
+            tasks = parse_todo_file(str(p))
+            completed = [t for t in tasks if t.status == "completed"]
+            pending = [t for t in tasks if t.status == "pending"]
+            self.assertEqual(len(completed), 1)
+            self.assertEqual(len(pending), 1)
+
+
+class TestExtractTargetFileMetadata(unittest.TestCase):
+    """Tests for target_file and target_lines extraction in _extract_metadata."""
+
+    def test_path_with_single_line(self):
+        m = _extract_metadata("backend/src/main.py:19 - logging issue")
+        self.assertEqual(m["target_file"], "backend/src/main.py")
+        self.assertEqual(m["target_lines"], "19")
+
+    def test_path_with_line_range(self):
+        m = _extract_metadata("video_utils.py:277-278 - path issue")
+        self.assertEqual(m["target_file"], "video_utils.py")
+        self.assertEqual(m["target_lines"], "277-278")
+
+    def test_path_with_multiple_lines(self):
+        m = _extract_metadata("docker-compose.yml:42, 86 - Linux paths")
+        self.assertEqual(m["target_file"], "docker-compose.yml")
+        self.assertEqual(m["target_lines"], "42, 86")
+
+    def test_path_without_lines(self):
+        m = _extract_metadata("backend/README.md - activation instructions")
+        self.assertEqual(m["target_file"], "backend/README.md")
+        self.assertNotIn("target_lines", m)
+
+    def test_no_file_path(self):
+        m = _extract_metadata("General - verify subprocess calls")
+        self.assertNotIn("target_file", m)
+
+
 class TestIntegrationWithRealFiles(unittest.TestCase):
     """Integration tests with real TODO files."""
 

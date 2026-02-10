@@ -614,6 +614,9 @@ Begin working on the task now.
                 return False
             if self._agent_select == "claude":
                 cmd = [*cmd, *_claude_headless_args()]
+            elif self._agent_select == "codex":
+                # Use non-interactive mode so stdin piping works (avoids TTY requirement).
+                cmd = [*cmd, "exec", "-"]
             return self._run_cli_agent(cmd, prompt)
 
         if self._agent_select != "router":
